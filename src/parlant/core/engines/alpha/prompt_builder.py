@@ -204,14 +204,24 @@ The following is a description of your background and personality: ###
         self,
         customer: Customer,
     ) -> PromptBuilder:
+        customer_info = f"The user you're interacting with is called {customer.name}."
+
+        # Include customer metadata if available
+        if customer.extra:
+            metadata_parts = []
+            for key, value in customer.extra.items():
+                metadata_parts.append(f"{key} is {value}")
+
+            if metadata_parts:
+                customer_info += f" Additional information about this user: {', '.join(metadata_parts)}."
+            customer_info += " remember these information."
+
         self.add_section(
             name=BuiltInSection.CUSTOMER_IDENTITY,
-            template="""
-The user you're interacting with is called {customer_name}.
+            template=f"""
+{customer_info}
 """,
-            props={
-                "customer_name": customer.name,
-            },
+            props={},
             status=SectionStatus.ACTIVE,
         )
 
@@ -571,6 +581,31 @@ These guidelines have already been pre-filtered based on the interaction's conte
                 "guideline_list": guideline_list,
                 "agent_intention_guidelines_list": agent_intention_guidelines_list,
             },
+            status=SectionStatus.ACTIVE,
+        )
+        return self
+
+    def add_guidelines_for_canrep_selection(
+        self, guideline_matches: Sequence[GuidelineMatch]
+    ) -> PromptBuilder:
+        guideline_representations = {
+            m.guideline.id: internal_representation(m.guideline) for m in guideline_matches
+        }
+
+        if guideline_matches:
+            formatted_guidelines = "In choosing the template, there are 2 cases. 1) There is a single, clear match. 2) There are multiple candidates for a match. In the second case, you may also find that there are multiple templates that overlap with the draft message in different ways. In those cases, you will have to decide which part (which overlap) you prioritize. When doing so, your prioritization for choosing between different overlapping templates should try to maximize adherence to the following behavioral guidelines: ###\n"
+
+            for match in [
+                g for g in guideline_matches if internal_representation(g.guideline).action
+            ]:
+                formatted_guidelines += f"\n- When {guideline_representations[match.guideline.id].condition}, then {guideline_representations[match.guideline.id].action}."
+
+            formatted_guidelines += "\n###"
+        else:
+            formatted_guidelines = ""
+        self.add_section(
+            name=BuiltInSection.GUIDELINE_DESCRIPTIONS,
+            template=formatted_guidelines,
             status=SectionStatus.ACTIVE,
         )
         return self

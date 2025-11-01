@@ -27,13 +27,15 @@ from openai import (
 from typing import Any, Mapping
 from typing_extensions import override
 import json
-import jsonfinder  # type: ignore
 import os
 
 from pydantic import ValidationError
 import tiktoken
 
-from parlant.adapters.nlp.common import normalize_json_output
+from parlant.adapters.nlp.common import (
+    normalize_json_output,
+    repair_and_parse_json,
+)
 from parlant.core.engines.alpha.canned_response_generator import (
     CannedResponseDraftSchema,
     CannedResponseSelectionSchema,
@@ -90,11 +92,18 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
         model_name: str,
         logger: Logger,
         tokenizer_model_name: str | None = None,
+        api_key_env: str = "OPENAI_API_KEY",
+        base_url_env: str = "OPENAI_BASE_URL",
     ) -> None:
         self.model_name = model_name
         self._logger = logger
 
-        self._client = AsyncClient(api_key=os.environ["OPENAI_API_KEY"])
+        # Support custom API endpoints (e.g., Groq)
+        client_kwargs = {"api_key": os.environ[api_key_env]}
+        if base_url := os.environ.get(base_url_env):
+            client_kwargs["base_url"] = base_url
+
+        self._client = AsyncClient(**client_kwargs)
 
         self._tokenizer = OpenAIEstimatingTokenizer(
             model_name=tokenizer_model_name or self.model_name
@@ -168,7 +177,7 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
             assert parsed_object
 
             assert response.usage
-            assert response.usage.prompt_tokens_details
+            # assert response.usage.prompt_tokens_details
 
             return SchematicGenerationResult[T](
                 content=parsed_object,
@@ -180,8 +189,8 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
                         input_tokens=response.usage.prompt_tokens,
                         output_tokens=response.usage.completion_tokens,
                         extra={
-                            "cached_input_tokens": response.usage.prompt_tokens_details.cached_tokens
-                            or 0
+                            # "cached_input_tokens": response.usage.prompt_tokens_details.cached_tokens or 0
+                            "cached_input_tokens": 0
                         },
                     ),
                 ),
@@ -206,18 +215,18 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
 
             raw_content = response.choices[0].message.content or "{}"
 
-            try:
-                json_content = json.loads(normalize_json_output(raw_content))
-            except json.JSONDecodeError:
-                self._logger.warning(f"Invalid JSON returned by {self.model_name}:\n{raw_content})")
-                json_content = jsonfinder.only_json(raw_content)[2]
-                self._logger.warning("Found JSON content within model response; continuing...")
+            # Use multi-layer JSON repair strategy
+            json_content = repair_and_parse_json(
+                raw_content=raw_content,
+                logger=self._logger,
+                model_name=self.model_name,
+            )
 
             try:
                 content = self.schema.model_validate(json_content)
 
                 assert response.usage
-                assert response.usage.prompt_tokens_details
+                # assert response.usage.prompt_tokens_details
 
                 return SchematicGenerationResult(
                     content=content,
@@ -229,8 +238,8 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
                             input_tokens=response.usage.prompt_tokens,
                             output_tokens=response.usage.completion_tokens,
                             extra={
-                                "cached_input_tokens": response.usage.prompt_tokens_details.cached_tokens
-                                or 0
+                                # "cached_input_tokens": response.usage.prompt_tokens_details.cached_tokens or 0
+                                "cached_input_tokens": 0
                             },
                         ),
                     ),
@@ -288,14 +297,37 @@ class GPT_4o_Mini(OpenAISchematicGenerator[T]):
         return 128 * 1024
 
 
+class CustomModel(OpenAISchematicGenerator[T]):
+    """Custom model using LiteLLM-compatible API for generation."""
+
+    def __init__(self, logger: Logger) -> None:
+        super().__init__(
+            model_name=os.environ.get("LITELLM_MODEL", "moonshotai/kimi-k2-instruct-0905"),
+            logger=logger,
+            tokenizer_model_name="gpt-4o-2024-11-20",
+            api_key_env="LITELLM_API_KEY",
+            base_url_env="LITELLM_BASE_URL",
+        )
+
+    @property
+    @override
+    def max_tokens(self) -> int:
+        return 51200
+
+
 class OpenAIEmbedder(Embedder):
     supported_arguments = ["dimensions"]
 
     def __init__(self, model_name: str, logger: Logger) -> None:
         self.model_name = model_name
 
+        # Always use OpenAI for embeddings
         self._logger = logger
-        self._client = AsyncClient(api_key=os.environ["OPENAI_API_KEY"])
+        client_kwargs = {"api_key": os.environ["OPENAI_API_KEY"]}
+        if base_url := os.environ.get("OPENAI_BASE_URL"):
+            client_kwargs["base_url"] = base_url
+
+        self._client = AsyncClient(**client_kwargs)
         self._tokenizer = OpenAIEstimatingTokenizer(model_name=self.model_name)
 
     @property
@@ -376,7 +408,12 @@ class OpenAIModerationService(ModerationService):
         self.model_name = model_name
         self._logger = logger
 
-        self._client = AsyncClient(api_key=os.environ["OPENAI_API_KEY"])
+        # Always use OpenAI for moderation
+        client_kwargs = {"api_key": os.environ["OPENAI_API_KEY"]}
+        if base_url := os.environ.get("OPENAI_BASE_URL"):
+            client_kwargs["base_url"] = base_url
+
+        self._client = AsyncClient(**client_kwargs)
 
     @override
     async def check(self, content: str) -> ModerationCheck:
@@ -448,12 +485,13 @@ Please set OPENAI_API_KEY in your environment before running Parlant.
 
     @override
     async def get_schematic_generator(self, t: type[T]) -> OpenAISchematicGenerator[T]:
+        # Use CustomModel (LiteLLM-compatible) for all generation tasks
         return {
-            SingleToolBatchSchema: GPT_4o[SingleToolBatchSchema],
-            JourneyNodeSelectionSchema: GPT_4_1[JourneyNodeSelectionSchema],
-            CannedResponseDraftSchema: GPT_4_1[CannedResponseDraftSchema],
-            CannedResponseSelectionSchema: GPT_4_1[CannedResponseSelectionSchema],
-        }.get(t, GPT_4o_24_08_06[t])(self._logger)  # type: ignore
+            SingleToolBatchSchema: CustomModel[SingleToolBatchSchema],
+            JourneyNodeSelectionSchema: CustomModel[JourneyNodeSelectionSchema],
+            CannedResponseDraftSchema: CustomModel[CannedResponseDraftSchema],
+            CannedResponseSelectionSchema: CustomModel[CannedResponseSelectionSchema],
+        }.get(t, CustomModel[t])(self._logger)  # type: ignore
 
     @override
     async def get_embedder(self) -> Embedder:

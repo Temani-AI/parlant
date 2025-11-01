@@ -6,6 +6,17 @@ All notable changes to Parlant will be documented here.
 
 TBD
 
+## [3.0.4] - Unreleased
+
+### Added
+- Add robust multi-layer JSON repair system for handling malformed LLM responses
+- Add support for custom model providers (LiteLLM-compatible APIs)
+- Add customer metadata (extra fields) to agent prompts for better personalization
+
+### Fixed
+- Fix typo in method name: add_guideliens_for_canrep_selection → add_guidelines_for_canrep_selection
+- Remove cached token assertions for improved compatibility with various LLM providers
+
 ## [3.0.3] - 2025-10-24
 
 ### Fixed
