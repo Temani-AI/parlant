@@ -11,7 +11,7 @@
 This document describes two major features added to Parlant:
 
 1. **Robust JSON Repair System** - Multi-layer fallback strategy for handling malformed JSON responses from LLMs
-2. **Custom Model Support** - Ability to use Groq and other OpenAI-compatible API providers
+2. **Custom Model Support** - Ability to use LiteLLM and other OpenAI-compatible API providers
 
 These changes significantly improve Parlant's robustness and flexibility when working with various LLM providers.
 
@@ -55,7 +55,7 @@ Layer 4: Aggressive repair      # Last resort: extract + clean + repair
 
 ---
 
-### 2. Custom Model Support (Groq & OpenAI-Compatible APIs)
+### 2. Custom Model Support (LiteLLM & OpenAI-Compatible APIs)
 
 Enables using alternative LLM providers while maintaining full Parlant functionality.
 
@@ -77,15 +77,15 @@ Enables using alternative LLM providers while maintaining full Parlant functiona
 
 ### Environment Variables
 
-#### **For Custom Model Provider (e.g., Groq)**
+#### **For Custom Model Provider (e.g., LiteLLM)**
 
 ```bash
 # Required
-GROQ_API_KEY=your_groq_api_key_here
+LITELLM_API_KEY=your_litellm_api_key_here
 
 # Optional
-GROQ_BASE_URL=https://api.groq.com/openai/v1  # Default Groq endpoint
-GROQ_MODEL=moonshotai/kimi-k2-instruct-0905   # Default model
+LITELLM_BASE_URL=https://api.litellm.com/openai/v1  # Default LiteLLM endpoint
+LITELLM_MODEL=moonshotai/kimi-k2-instruct-0905   # Default model
 ```
 
 #### **For OpenAI (Embeddings & Moderation)**
@@ -100,21 +100,21 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 
 ### Configuration Examples
 
-#### **Using Groq**
+#### **Using LiteLLM**
 
 ```bash
-export GROQ_API_KEY="gsk_..."
-export GROQ_BASE_URL="https://api.groq.com/openai/v1"
-export GROQ_MODEL="llama-3.3-70b-versatile"
+export LITELLM_API_KEY="gsk_..."
+export LITELLM_BASE_URL="https://api.litellm.com/openai/v1"
+export LITELLM_MODEL="llama-3.3-70b-versatile"
 export OPENAI_API_KEY="sk-..."  # Still needed for embeddings
 ```
 
 #### **Using Another OpenAI-Compatible Provider**
 
 ```bash
-export GROQ_API_KEY="your_api_key"
-export GROQ_BASE_URL="https://custom-provider.com/v1"
-export GROQ_MODEL="custom-model-name"
+export LITELLM_API_KEY="your_api_key"
+export LITELLM_BASE_URL="https://custom-provider.com/v1"
+export LITELLM_MODEL="custom-model-name"
 export OPENAI_API_KEY="sk-..."
 ```
 
@@ -186,16 +186,16 @@ def __init__(
 **New CustomModel Class:**
 ```python
 class CustomModel(OpenAISchematicGenerator[T]):
-    """Custom model using Groq API for generation."""
+    """Custom model using LiteLLM for generation."""
     
     def __init__(self, logger: Logger, meter: Meter) -> None:
         super().__init__(
-            model_name=os.environ.get("GROQ_MODEL", "moonshotai/kimi-k2-instruct-0905"),
+            model_name=os.environ.get("LITELLM_MODEL", "moonshotai/kimi-k2-instruct-0905"),
             logger=logger,
             meter=meter,
             tokenizer_model_name="gpt-4o-2024-11-20",
-            api_key_env="GROQ_API_KEY",
-            base_url_env="GROQ_BASE_URL",
+            api_key_env="LITELLM_API_KEY",
+            base_url_env="LITELLM_BASE_URL",
         )
     
     @property
@@ -207,7 +207,7 @@ class CustomModel(OpenAISchematicGenerator[T]):
 **Updated Service Integration:**
 ```python
 async def get_schematic_generator(self, t: type[T]) -> OpenAISchematicGenerator[T]:
-    # Use CustomModel (Groq) for all generation tasks
+    # Use CustomModel (LiteLLM) for all generation tasks
     return {
         SingleToolBatchSchema: CustomModel[SingleToolBatchSchema],
         JourneyNodeSelectionSchema: CustomModel[JourneyNodeSelectionSchema],
@@ -267,12 +267,12 @@ builder.add_guidelines_for_canrep_selection(...)
 
 ## 🚀 Usage Examples
 
-### Example 1: Using Groq with Llama
+### Example 1: Using LiteLLM with Llama
 
 ```bash
 # Set environment variables
-export GROQ_API_KEY="gsk_your_key_here"
-export GROQ_MODEL="llama-3.3-70b-versatile"
+export LITELLM_API_KEY="gsk_your_key_here"
+export LITELLM_MODEL="llama-3.3-70b-versatile"
 export OPENAI_API_KEY="sk_your_openai_key"  # For embeddings
 
 # Run Parlant
@@ -360,7 +360,7 @@ See `JSON_REPAIR_IMPLEMENTATION_SUMMARY.md` for detailed test results.
 | Provider | Generation | Embeddings | Moderation | Status |
 |----------|-----------|------------|------------|--------|
 | OpenAI | ✅ | ✅ | ✅ | Fully Supported |
-| Groq | ✅ | ➖ | ➖ | Generation Only |
+| LiteLLM | ✅ | ➖ | ➖ | Generation Only |
 | Custom OpenAI-compatible | ✅ | ➖ | ➖ | Generation Only |
 
 **Note**: Embeddings and moderation always use OpenAI API.
@@ -384,9 +384,9 @@ pip install json-repair==0.52.0
 #### **2. Set Environment Variables**
 
 ```bash
-# If using Groq
-export GROQ_API_KEY="your_key"
-export GROQ_MODEL="your_model"  # Optional
+# If using LiteLLM
+export LITELLM_API_KEY="your_key"
+export LITELLM_MODEL="your_model"  # Optional
 
 # Keep OpenAI key for embeddings
 export OPENAI_API_KEY="your_openai_key"
@@ -394,7 +394,7 @@ export OPENAI_API_KEY="your_openai_key"
 
 #### **3. No Code Changes Required**
 
-The changes are backward compatible. If you don't set `GROQ_API_KEY`, the system will fail with a clear error message.
+The changes are backward compatible. If you don't set `LITELLM_API_KEY`, the system will fail with a clear error message.
 
 #### **4. Optional: Update Custom Integrations**
 
@@ -440,7 +440,7 @@ json_content = repair_and_parse_json(
 ### External References
 
 - [json-repair library](https://github.com/mangiucugna/json_repair)
-- [Groq API documentation](https://console.groq.com/docs)
+- [LiteLLM documentation](https://console.litellm.com/docs)
 - [OpenAI API compatibility](https://platform.openai.com/docs/api-reference)
 
 ---

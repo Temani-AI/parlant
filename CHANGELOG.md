@@ -10,7 +10,7 @@ TBD
 
 ### Added
 - Add robust multi-layer JSON repair system for handling malformed LLM responses
-- Add support for custom model providers (LiteLLM-compatible APIs)
+- Add support for custom model providers (LiteLLM and OpenAI-compatible APIs)
 - Add customer metadata (extra fields) to agent prompts for better personalization
 
 ### Fixed
