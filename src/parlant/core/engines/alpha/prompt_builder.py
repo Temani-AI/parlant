@@ -216,14 +216,24 @@ The following is a description of your background and personality: ###
         self,
         customer: Customer,
     ) -> PromptBuilder:
+        customer_info = f"The user you're interacting with is called {customer.name}."
+
+        # Include customer metadata if available
+        if customer.extra:
+            metadata_parts = []
+            for key, value in customer.extra.items():
+                metadata_parts.append(f"{key} is {value}")
+
+            if metadata_parts:
+                customer_info += f" Additional information about this user: {', '.join(metadata_parts)}."
+            customer_info += " remember these information."
+
         self.add_section(
             name=BuiltInSection.CUSTOMER_IDENTITY,
-            template="""
-The user you're interacting with is called {customer_name}.
+            template=f"""
+{customer_info}
 """,
-            props={
-                "customer_name": customer.name,
-            },
+            props={},
             status=SectionStatus.ACTIVE,
         )
 
@@ -587,7 +597,7 @@ These guidelines have already been pre-filtered based on the interaction's conte
         )
         return self
 
-    def add_guideliens_for_canrep_selection(
+    def add_guidelines_for_canrep_selection(
         self, guideline_matches: Sequence[GuidelineMatch]
     ) -> PromptBuilder:
         guideline_representations = {
