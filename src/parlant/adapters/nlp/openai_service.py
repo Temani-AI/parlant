@@ -109,7 +109,7 @@ class OpenAISchematicGenerator(BaseSchematicGenerator[T]):
     ) -> None:
         super().__init__(logger=logger, meter=meter, model_name=model_name)
 
-        # Support custom API endpoints (e.g., Groq)
+        # Support custom API endpoints (e.g., LiteLLM)
         client_kwargs = {"api_key": os.environ[api_key_env]}
         if base_url := os.environ.get(base_url_env):
             client_kwargs["base_url"] = base_url
@@ -329,16 +329,16 @@ class GPT_4o_Mini(OpenAISchematicGenerator[T]):
 
 
 class CustomModel(OpenAISchematicGenerator[T]):
-    """Custom model using Groq API for generation."""
+    """Custom model using LiteLLM for generation."""
 
     def __init__(self, logger: Logger, meter: Meter) -> None:
         super().__init__(
-            model_name=os.environ.get("GROQ_MODEL", "moonshotai/kimi-k2-instruct-0905"),
+            model_name=os.environ.get("LITELLM_MODEL", "moonshotai/kimi-k2-instruct-0905"),
             logger=logger,
             meter=meter,
             tokenizer_model_name="gpt-4o-2024-11-20",
-            api_key_env="GROQ_API_KEY",
-            base_url_env="GROQ_BASE_URL",
+            api_key_env="LITELLM_API_KEY",
+            base_url_env="LITELLM_BASE_URL",
         )
 
     @property
@@ -525,7 +525,7 @@ Please set OPENAI_API_KEY in your environment before running Parlant.
 
     @override
     async def get_schematic_generator(self, t: type[T]) -> OpenAISchematicGenerator[T]:
-        # Use CustomModel (Groq) for all generation tasks
+        # Use CustomModel (LiteLLM) for all generation tasks
         return {
             SingleToolBatchSchema: CustomModel[SingleToolBatchSchema],
             JourneyNodeSelectionSchema: CustomModel[JourneyNodeSelectionSchema],
