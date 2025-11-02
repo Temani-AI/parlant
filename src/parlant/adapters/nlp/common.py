@@ -20,7 +20,6 @@ import jsonfinder
 from json_repair import repair_json
 
 from parlant.core.loggers import Logger
-from parlant.core.meter import Counter, Meter
 
 
 def normalize_json_output(raw_output: str) -> str:
@@ -139,53 +138,3 @@ def repair_and_parse_json(
     logger.error(f"All JSON parsing layers failed for {model_name}")
     logger.error(f"Raw content:\n{raw_content}")
     raise ValueError(f"Failed to parse JSON from {model_name} response after all repair attempts")
-
-
-_INPUT_TOKENS_COUNTER: Counter
-_OUTPUT_TOKENS_COUNTER: Counter
-_CACHED_TOKENS_COUNTER: Counter
-_COUNTERS_INITIALIZED = False
-
-
-async def record_llm_metrics(
-    meter: Meter,
-    model_name: str,
-    input_tokens: int,
-    output_tokens: int,
-    cached_input_tokens: int = 0,
-) -> None:
-    global _COUNTERS_INITIALIZED
-    global _INPUT_TOKENS_COUNTER
-    global _OUTPUT_TOKENS_COUNTER
-    global _CACHED_TOKENS_COUNTER
-
-    if not _COUNTERS_INITIALIZED:
-        _INPUT_TOKENS_COUNTER = meter.create_counter(
-            name="input_tokens",
-            description="Number of input tokens sent to a LLM model",
-        )
-        _OUTPUT_TOKENS_COUNTER = meter.create_counter(
-            name="output_tokens",
-            description="Number of output tokens received from a LLM model",
-        )
-        _CACHED_TOKENS_COUNTER = meter.create_counter(
-            name="cached_input_tokens",
-            description="Number of input tokens served from cache for a LLM model",
-        )
-
-        _COUNTERS_INITIALIZED = True
-
-    await _INPUT_TOKENS_COUNTER.increment(
-        input_tokens,
-        {"model_name": model_name},
-    )
-
-    await _OUTPUT_TOKENS_COUNTER.increment(
-        output_tokens,
-        {"model_name": model_name},
-    )
-
-    await _CACHED_TOKENS_COUNTER.increment(
-        cached_input_tokens,
-        {"model_name": model_name},
-    )
