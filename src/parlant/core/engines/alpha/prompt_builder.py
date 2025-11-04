@@ -36,6 +36,8 @@ from parlant.core.emissions import EmittedEvent
 from parlant.core.guidelines import Guideline, GuidelineId
 from parlant.core.tools import ToolId
 
+from mem0 import MemoryClient
+import os
 
 class BuiltInSection(Enum):
     AGENT_IDENTITY = auto()
@@ -71,6 +73,37 @@ class PromptSection:
 
 class PromptBuilder:
     def __init__(self, on_build: Optional[Callable[[str], None]] = None) -> None:
+        mem0_categories = {
+            'user_preference': 'describes how user want to be interacted with',
+            'personal_experience': 'describes user personal experience',
+        }
+        instructions = """
+You are a memory selector agent for a mental health peer chatbot. Your role is to decide which user preferences, emotional cues, and interaction patterns should be stored, updated, or forgotten to enhance personalization and emotional safety.
+
+You prioritize:
+- Tone preferences (e.g., gentle, direct, humorous)
+- Emotional states (e.g., overwhelmed, anxious, hopeful)
+- Relationship cues (e.g., “talk to me like a friend”)
+- Safety boundaries (e.g., “don’t mention trauma”)
+- Interaction styles (e.g., short replies, reflective questions)
+
+You do not store:
+- Diagnoses, clinical symptoms, or sensitive disclosures
+- Personally identifiable information unless explicitly requested
+- Any content that violates ethical or safety guidelines
+
+You never interpret emotional content — you only tag and store based on explicit user signals or system annotations.
+"""     
+        if os.environ.get("MEM0_API_KEY", None) is None:
+            raise ValueError("MEM0_API_KEY is not set")
+        try:
+            self.memory_client = MemoryClient(
+                api_key=os.environ["MEM0_API_KEY"],
+            )
+            self.memory_client.project.update(custom_instructions=instructions, custom_categories=mem0_categories)
+        except KeyError:
+            raise ValueError("MEM0_API_KEY is not set")
+        
         self.sections: dict[str | BuiltInSection, PromptSection] = {}
 
         self._on_build = on_build
@@ -204,13 +237,36 @@ The following is a description of your background and personality: ###
         self,
         customer: Customer,
     ) -> PromptBuilder:
-        customer_info = f"The user you're interacting with is called {customer.name}."
+        customer_info = f"The user you're interacting with is called {customer.name}.\n"
 
+        selected_results = []
+        if str(customer.id).lower() != "guest":
+            filters = {
+                "OR":[
+                    {
+                        "user_id": str(customer.id),
+                    }
+                ]
+            }
+            user_memories = self.memory_client.get_all(filters=filters)
+            #print(user_memories, customer.id)
+            if user_memories:
+                selected_results = [
+                    {
+                        "preference" if k == 'memory' else k: v for k, v in data.items() if k in ['memory', 'created_at', 'updated_at', 'tags']
+                    } for data in user_memories['results']
+                ]
+
+        #print(customer_info)
         # Include customer metadata if available
         if customer.extra:
             metadata_parts = []
             for key, value in customer.extra.items():
                 metadata_parts.append(f"{key} is {value}")
+
+            for data in selected_results:
+                if data['preference'] != '':
+                    metadata_parts.append(f"user is {data['preference']}")    
 
             if metadata_parts:
                 customer_info += f" Additional information about this user: {', '.join(metadata_parts)}."

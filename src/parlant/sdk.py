@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+ # Prioritize local src directory
 
 from __future__ import annotations
 
@@ -57,7 +58,8 @@ from typing import (
 from typing_extensions import overload
 from lagom import Container
 
-
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__))) 
 from parlant.adapters.db.json_file import JSONFileDocumentCollection, JSONFileDocumentDatabase
 from parlant.adapters.db.transient import TransientDocumentDatabase
 from parlant.adapters.vector_db.transient import TransientVectorDatabase
@@ -210,6 +212,8 @@ from parlant.core.tools import (
     ToolResult,
 )
 from parlant.core.version import VERSION
+
+sys.path.pop(0)
 
 INTEGRATED_TOOL_SERVICE_NAME = "built-in"
 

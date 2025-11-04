@@ -94,6 +94,8 @@ from parlant.core.loggers import LogLevel, Logger
 from parlant.core.entity_cq import EntityQueries, EntityCommands
 from parlant.core.tools import ToolContext, ToolId
 
+from mem0 import MemoryClient
+import os
 
 class _PreparationIterationResolution(Enum):
     COMPLETED = "continue"
@@ -135,6 +137,39 @@ class AlphaEngine(Engine):
         perceived_performance_policy: PerceivedPerformancePolicy,
         hooks: EngineHooks,
     ) -> None:
+        
+        mem0_categories = {
+            'user_preference': 'describes how user want to be interacted with',
+            'personal_experience': 'describes user personal experience',
+        }
+        instructions = """
+You are a memory selector agent for a mental health peer chatbot. Your role is to decide which user preferences, emotional cues, and interaction patterns should be stored, updated, or forgotten to enhance personalization and emotional safety.
+
+You prioritize:
+- Tone preferences (e.g., gentle, direct, humorous)
+- Emotional states (e.g., overwhelmed, anxious, hopeful)
+- Relationship cues (e.g., “talk to me like a friend”)
+- Safety boundaries (e.g., “don’t mention trauma”)
+- Interaction styles (e.g., short replies, reflective questions)
+
+You do not store:
+- Diagnoses, clinical symptoms, or sensitive disclosures
+- Personally identifiable information unless explicitly requested
+- Any content that violates ethical or safety guidelines
+
+You never interpret emotional content — you only tag and store based on explicit user signals or system annotations.
+"""     
+        if os.environ.get("MEM0_API_KEY", None) is None:
+            raise ValueError("MEM0_API_KEY is not set")
+        try:
+            self.memory_client = MemoryClient(
+                api_key=os.environ["MEM0_API_KEY"],
+            )
+            self.memory_client.project.update(custom_instructions=instructions, custom_categories=mem0_categories)
+        except KeyError:
+            raise ValueError("MEM0_API_KEY is not set")
+        
+
         self._logger = logger
         self._correlator = correlator
 
@@ -328,6 +363,42 @@ class AlphaEngine(Engine):
 
                 await self._hooks.call_on_messages_emitted(context)
 
+            if str(context.session.customer_id).lower() != "guest":
+                latest_customer_message = context.interaction.history
+                # print(latest_customer_message)
+                # print(len(latest_customer_message))
+                cache = []; k = -1
+                while str(latest_customer_message[k].source).strip() != "EventSource.CUSTOMER" and k > -len(latest_customer_message):
+                    if str(latest_customer_message[k].kind).strip() == "EventKind.MESSAGE":
+                        cache.append(latest_customer_message[k])
+                    k -= 1
+                
+                cache.append(latest_customer_message[k])
+                k -= 1
+
+                if k > -len(latest_customer_message):
+                    while str(latest_customer_message[k].source).strip() != "EventSource.CUSTOMER" and k > -len(latest_customer_message):
+                        if str(latest_customer_message[k].kind).strip() == "EventKind.MESSAGE":
+                            cache.append(latest_customer_message[k])
+                        k -= 1
+                cache.reverse()
+
+                #print(cache)
+                if cache:
+                    messages = [
+                        {
+                            "role": "user" if "customer" in str(event.source).lower() else "assistant",
+                            "content": event.data['message']
+                        }
+                        for event in cache
+                    ]
+                    # print(messages)
+                    self.memory_client.add(
+                        messages=messages,
+                        user_id=context.session.customer_id,
+                        version="v2"
+                    )
+            
         except asyncio.CancelledError:
             # Task was cancelled. This usually happens for 1 of 2 reasons:
             #   1. The server is shutting down
