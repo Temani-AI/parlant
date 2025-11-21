@@ -84,7 +84,7 @@ class OpenAIEstimatingTokenizer(EstimatingTokenizer):
 
 
 class OpenAISchematicGenerator(SchematicGenerator[T]):
-    supported_openai_params = ["temperature", "logit_bias", "max_tokens"]
+    supported_openai_params = ["max_tokens"]
     supported_hints = supported_openai_params + ["strict"]
 
     def __init__(
@@ -92,8 +92,8 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
         model_name: str,
         logger: Logger,
         tokenizer_model_name: str | None = None,
-        api_key_env: str = "OPENAI_API_KEY",
-        base_url_env: str = "OPENAI_BASE_URL",
+        api_key_env: str = "LITELLM_API_KEY",
+        base_url_env: str = "LITELLM_BASE_URL",
     ) -> None:
         self.model_name = model_name
         self._logger = logger
@@ -112,7 +112,7 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
     @property
     @override
     def id(self) -> str:
-        return f"openai/{self.model_name}"
+        return f"{self.model_name}"
 
     @property
     @override
@@ -154,15 +154,20 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
             prompt = prompt.build()
 
         openai_api_arguments = {k: v for k, v in hints.items() if k in self.supported_openai_params}
-
+        openai_api_arguments["web_search_options"] = None
+        openai_api_arguments["user"] = None
+        openai_api_arguments["verbosity"] = None
+        # print(hints)
+        # print("response format", self.schema)
+        # print("prompt", prompt)
         if hints.get("strict", False):
             t_start = time.time()
             try:
                 response = await self._client.beta.chat.completions.parse(
-                    messages=[{"role": "developer", "content": prompt}],
-                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    model=os.environ.get("LITELLM_AGENTIC_MODEL", "vertex/minimax-m2"),
                     response_format=self.schema,
-                    **openai_api_arguments,
+                    **openai_api_arguments
                 )
             except RateLimitError:
                 self._logger.error(RATE_LIMIT_ERROR_MESSAGE)
@@ -197,59 +202,62 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
             )
 
         else:
-            try:
-                t_start = time.time()
-                response = await self._client.chat.completions.create(
-                    messages=[{"role": "developer", "content": prompt}],
-                    model=self.model_name,
-                    response_format={"type": "json_object"},
-                    **openai_api_arguments,
+            for n_retry in range(2):
+                model = self.model_name if n_retry == 0 else os.environ.get("LITELLM_AGENTIC_MODEL", "vertex/minimax-m2")
+                try:
+                    t_start = time.time()
+                    response = await self._client.chat.completions.create(
+                        messages=[{"role": "user", "content": prompt}],
+                        model=model,
+                        response_format={"type": "json_object"},
+                        **openai_api_arguments
+                    )
+                    t_end = time.time()
+                except RateLimitError:
+                    self._logger.error(RATE_LIMIT_ERROR_MESSAGE)
+                    raise
+
+                if response.usage:
+                    self._logger.trace(response.usage.model_dump_json(indent=2))
+
+                raw_content = response.choices[0].message.content or "{}"
+
+                # Use multi-layer JSON repair strategy
+                json_content = repair_and_parse_json(
+                    raw_content=raw_content,
+                    logger=self._logger,
+                    model_name=self.model_name,
                 )
-                t_end = time.time()
-            except RateLimitError:
-                self._logger.error(RATE_LIMIT_ERROR_MESSAGE)
-                raise
 
-            if response.usage:
-                self._logger.trace(response.usage.model_dump_json(indent=2))
+                try:
+                    content = self.schema.model_validate(json_content)
 
-            raw_content = response.choices[0].message.content or "{}"
+                    assert response.usage
+                    # assert response.usage.prompt_tokens_details
 
-            # Use multi-layer JSON repair strategy
-            json_content = repair_and_parse_json(
-                raw_content=raw_content,
-                logger=self._logger,
-                model_name=self.model_name,
-            )
-
-            try:
-                content = self.schema.model_validate(json_content)
-
-                assert response.usage
-                # assert response.usage.prompt_tokens_details
-
-                return SchematicGenerationResult(
-                    content=content,
-                    info=GenerationInfo(
-                        schema_name=self.schema.__name__,
-                        model=self.id,
-                        duration=(t_end - t_start),
-                        usage=UsageInfo(
-                            input_tokens=response.usage.prompt_tokens,
-                            output_tokens=response.usage.completion_tokens,
-                            extra={
-                                # "cached_input_tokens": response.usage.prompt_tokens_details.cached_tokens or 0
-                                "cached_input_tokens": 0
-                            },
+                    return SchematicGenerationResult(
+                        content=content,
+                        info=GenerationInfo(
+                            schema_name=self.schema.__name__,
+                            model=self.id,
+                            duration=(t_end - t_start),
+                            usage=UsageInfo(
+                                input_tokens=response.usage.prompt_tokens,
+                                output_tokens=response.usage.completion_tokens,
+                                extra={
+                                    # "cached_input_tokens": response.usage.prompt_tokens_details.cached_tokens or 0
+                                    "cached_input_tokens": 0
+                                },
+                            ),
                         ),
-                    ),
-                )
+                    )
 
-            except ValidationError as e:
-                self._logger.error(
-                    f"Error: {e.json(indent=2)}\nJSON content returned by {self.model_name} does not match expected schema:\n{raw_content}"
-                )
-                raise
+                except ValidationError as e:
+                    self._logger.error(
+                        f"Error: {e.json(indent=2)}\nJSON content returned by {self.model_name} does not match expected schema:\n{raw_content}"
+                    )
+                    if n_retry == 1: raise
+                    else: continue
 
 
 class GPT_4o(OpenAISchematicGenerator[T]):
@@ -297,12 +305,12 @@ class GPT_4o_Mini(OpenAISchematicGenerator[T]):
         return 128 * 1024
 
 
-class CustomModel(OpenAISchematicGenerator[T]):
+class ChatModel(OpenAISchematicGenerator[T]):
     """Custom model using LiteLLM for generation."""
 
     def __init__(self, logger: Logger) -> None:
         super().__init__(
-            model_name=os.environ.get("LITELLM_MODEL", "moonshotai/kimi-k2-instruct-0905"),
+            model_name=os.environ.get("LITELLM_CHAT_MODEL", "kimi-k2"),
             logger=logger,
             tokenizer_model_name="gpt-4o-2024-11-20",
             api_key_env="LITELLM_API_KEY",
@@ -313,6 +321,24 @@ class CustomModel(OpenAISchematicGenerator[T]):
     @override
     def max_tokens(self) -> int:
         return 51200
+    
+
+class AgenticModel(OpenAISchematicGenerator[T]):
+    """Custom model using LiteLLM for generation."""
+
+    def __init__(self, logger: Logger) -> None:
+        super().__init__(
+            model_name=os.environ.get("LITELLM_AGENTIC_MODEL", "vertex/minimax-m2"),
+            logger=logger,
+            tokenizer_model_name="gpt-4o-2024-11-20",
+            api_key_env="LITELLM_API_KEY",
+            base_url_env="LITELLM_BASE_URL",
+        )
+
+    @property
+    @override
+    def max_tokens(self) -> int:
+        return 100_000
 
 
 class OpenAIEmbedder(Embedder):
@@ -323,7 +349,7 @@ class OpenAIEmbedder(Embedder):
 
         # Always use OpenAI for embeddings
         self._logger = logger
-        client_kwargs = {"api_key": os.environ["OPENAI_API_KEY"]}
+        client_kwargs = {"api_key": os.environ["OPENAI_API_EMBEDDER_KEY"]}
         if base_url := os.environ.get("OPENAI_BASE_URL"):
             client_kwargs["base_url"] = base_url
 
@@ -485,13 +511,13 @@ Please set OPENAI_API_KEY in your environment before running Parlant.
 
     @override
     async def get_schematic_generator(self, t: type[T]) -> OpenAISchematicGenerator[T]:
-        # Use CustomModel (LiteLLM) for all generation tasks
+        # Use ChatModel (LiteLLM) for all generation tasks
         return {
-            SingleToolBatchSchema: CustomModel[SingleToolBatchSchema],
-            JourneyNodeSelectionSchema: CustomModel[JourneyNodeSelectionSchema],
-            CannedResponseDraftSchema: CustomModel[CannedResponseDraftSchema],
-            CannedResponseSelectionSchema: CustomModel[CannedResponseSelectionSchema],
-        }.get(t, CustomModel[t])(self._logger)  # type: ignore
+            SingleToolBatchSchema: AgenticModel[SingleToolBatchSchema],
+            JourneyNodeSelectionSchema: AgenticModel[JourneyNodeSelectionSchema],
+            CannedResponseDraftSchema: ChatModel[CannedResponseDraftSchema],
+            CannedResponseSelectionSchema: ChatModel[CannedResponseSelectionSchema],
+        }.get(t, ChatModel[t])(self._logger)  # type: ignore
 
     @override
     async def get_embedder(self) -> Embedder:
