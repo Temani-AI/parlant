@@ -349,7 +349,7 @@ class OpenAIEmbedder(Embedder):
 
         # Always use OpenAI for embeddings
         self._logger = logger
-        client_kwargs = {"api_key": os.environ["OPENAI_API_EMBEDDER_KEY"]}
+        client_kwargs = {"api_key": os.environ["OPENAI_API_KEY"]}
         if base_url := os.environ.get("OPENAI_BASE_URL"):
             client_kwargs["base_url"] = base_url
 
