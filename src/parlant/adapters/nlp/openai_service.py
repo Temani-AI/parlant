@@ -153,10 +153,10 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
         if isinstance(prompt, PromptBuilder):
             prompt = prompt.build()
 
-        openai_api_arguments = {k: v for k, v in hints.items() if k in self.supported_openai_params}
-        openai_api_arguments["web_search_options"] = None
-        openai_api_arguments["user"] = None
-        openai_api_arguments["verbosity"] = None
+        # openai_api_arguments = {k: v for k, v in hints.items() if k in self.supported_openai_params}
+        # openai_api_arguments["web_search_options"] = None
+        # openai_api_arguments["user"] = None
+        # openai_api_arguments["verbosity"] = None
         # print(hints)
         # print("response format", self.schema)
         # print("prompt", prompt)
@@ -167,7 +167,7 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
                     messages=[{"role": "user", "content": prompt}],
                     model=os.environ.get("LITELLM_AGENTIC_MODEL", "vertex/minimax-m2"),
                     response_format=self.schema,
-                    **openai_api_arguments
+                    # **openai_api_arguments
                 )
             except RateLimitError:
                 self._logger.error(RATE_LIMIT_ERROR_MESSAGE)
@@ -210,7 +210,7 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
                         messages=[{"role": "user", "content": prompt}],
                         model=model,
                         response_format={"type": "json_object"},
-                        **openai_api_arguments
+                        # **openai_api_arguments
                     )
                     t_end = time.time()
                 except RateLimitError:
