@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import re
 
 from __future__ import annotations
 from itertools import chain
@@ -84,7 +85,7 @@ class OpenAIEstimatingTokenizer(EstimatingTokenizer):
 
 
 class OpenAISchematicGenerator(SchematicGenerator[T]):
-    supported_openai_params = ["max_tokens"]
+    supported_openai_params = ["max_tokens", "temperature"]
     supported_hints = supported_openai_params + ["strict"]
 
     def __init__(
@@ -153,10 +154,13 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
         if isinstance(prompt, PromptBuilder):
             prompt = prompt.build()
 
-        # openai_api_arguments = {k: v for k, v in hints.items() if k in self.supported_openai_params}
-        # openai_api_arguments["web_search_options"] = None
-        # openai_api_arguments["user"] = None
-        # openai_api_arguments["verbosity"] = None
+        def remove_thinking_outputs(text: str) -> str:
+            return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+
+        openai_api_arguments = {k: v for k, v in hints.items() if k in self.supported_openai_params}
+        openai_api_arguments["web_search_options"] = {}
+        openai_api_arguments["user"] = {}
+        openai_api_arguments["verbosity"] = {}
         # print(hints)
         # print("response format", self.schema)
         # print("prompt", prompt)
@@ -167,7 +171,7 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
                     messages=[{"role": "user", "content": prompt}],
                     model=os.environ.get("LITELLM_AGENTIC_MODEL", "vertex/minimax-m2"),
                     response_format=self.schema,
-                    # **openai_api_arguments
+                    **openai_api_arguments
                 )
             except RateLimitError:
                 self._logger.error(RATE_LIMIT_ERROR_MESSAGE)
@@ -210,7 +214,7 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
                         messages=[{"role": "user", "content": prompt}],
                         model=model,
                         response_format={"type": "json_object"},
-                        # **openai_api_arguments
+                        **openai_api_arguments
                     )
                     t_end = time.time()
                 except RateLimitError:
@@ -253,10 +257,11 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
                     )
 
                 except ValidationError as e:
-                    self._logger.error(
-                        f"Error: {e.json(indent=2)}\nJSON content returned by {self.model_name} does not match expected schema:\n{raw_content}"
-                    )
-                    if n_retry == 1: raise
+                    if n_retry == 1: 
+                        self._logger.error(
+                            f"Error: {e.json(indent=2)}\nJSON content returned by {model} does not match expected schema:\n{raw_content}"
+                        )
+                        raise
                     else: continue
 
 
