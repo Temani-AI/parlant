@@ -173,6 +173,7 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
                     response_format=self.schema,
                     **openai_api_arguments
                 )
+                response.choices[0].message.content = remove_thinking_outputs(response.choices[0].message.content)
             except RateLimitError:
                 self._logger.error(RATE_LIMIT_ERROR_MESSAGE)
                 raise
@@ -216,6 +217,7 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
                         response_format={"type": "json_object"},
                         **openai_api_arguments
                     )
+                    response.choices[0].message.content = remove_thinking_outputs(response.choices[0].message.content)
                     t_end = time.time()
                 except RateLimitError:
                     self._logger.error(RATE_LIMIT_ERROR_MESSAGE)
