@@ -25,6 +25,24 @@ from openai import (
     InternalServerError,
     RateLimitError,
 )
+from parlant.core.engines.alpha.guideline_matching.generic.observational_batch import (
+    GenericObservationalGuidelineMatchesSchema,
+)
+from parlant.core.engines.alpha.guideline_matching.generic.guideline_actionable_batch import (
+    GenericActionableGuidelineMatchesSchema,
+)
+from parlant.core.engines.alpha.guideline_matching.generic.guideline_previously_applied_actionable_batch import (
+    GenericPreviouslyAppliedActionableGuidelineMatchesSchema,
+)
+from parlant.core.engines.alpha.guideline_matching.generic.guideline_previously_applied_actionable_customer_dependent_batch import (
+    GenericPreviouslyAppliedActionableCustomerDependentGuidelineMatchesSchema,
+)
+from parlant.core.engines.alpha.guideline_matching.generic.response_analysis_batch import (
+    GenericResponseAnalysisSchema,
+)
+from parlant.core.engines.alpha.guideline_matching.generic.disambiguation_batch import (
+    DisambiguationGuidelineMatchesSchema,
+)
 from typing import Any, Mapping
 from typing_extensions import override
 import json
@@ -329,6 +347,23 @@ class ChatModel(OpenAISchematicGenerator[T]):
     def max_tokens(self) -> int:
         return 51200
     
+class GuidelineModel(OpenAISchematicGenerator[T]):
+    """Custom model for guideline-related tasks using LiteLLM."""
+
+    def __init__(self, logger: Logger) -> None:
+        super().__init__(
+            model_name=os.environ["LITELLM_GUIDELINE_MODEL"],
+            logger=logger,
+            tokenizer_model_name="gpt-4o-2024-11-20",
+            api_key_env="LITELLM_API_KEY",
+            base_url_env="LITELLM_BASE_URL",
+        )
+
+    @property
+    @override
+    def max_tokens(self) -> int:
+        return 51200  
+    
 
 class AgenticModel(OpenAISchematicGenerator[T]):
     """Custom model using LiteLLM for generation."""
@@ -524,6 +559,13 @@ Please set OPENAI_API_KEY in your environment before running Parlant.
             JourneyNodeSelectionSchema: AgenticModel[JourneyNodeSelectionSchema],
             CannedResponseDraftSchema: ChatModel[CannedResponseDraftSchema],
             CannedResponseSelectionSchema: ChatModel[CannedResponseSelectionSchema],
+            # Guidlines
+            GenericObservationalGuidelineMatchesSchema: GuidelineModel[GenericObservationalGuidelineMatchesSchema],
+            GenericActionableGuidelineMatchesSchema: GuidelineModel[GenericActionableGuidelineMatchesSchema],
+            GenericPreviouslyAppliedActionableGuidelineMatchesSchema: GuidelineModel[GenericPreviouslyAppliedActionableGuidelineMatchesSchema],
+            GenericPreviouslyAppliedActionableCustomerDependentGuidelineMatchesSchema: GuidelineModel[GenericPreviouslyAppliedActionableCustomerDependentGuidelineMatchesSchema],
+            GenericResponseAnalysisSchema: GuidelineModel[GenericResponseAnalysisSchema],
+            DisambiguationGuidelineMatchesSchema: GuidelineModel[DisambiguationGuidelineMatchesSchema],
         }.get(t, ChatModel[t])(self._logger)  # type: ignore
 
     @override
