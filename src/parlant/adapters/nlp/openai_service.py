@@ -183,8 +183,11 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
         # print("response format", self.schema)
         # print("prompt", prompt)
 
-        print(self.model_name)
         if hints.get("strict", False):
+            print("#"*20)
+            print(prompt, '\n')
+            print("------>", self.model_name)
+            print("#"*20)
             t_start = time.time()
             try:
                 response = await self._client.beta.chat.completions.parse(
@@ -227,6 +230,10 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
             )
 
         else:
+            print("#"*20)
+            print(prompt, '\n')
+            print("------>", self.model_name)
+            print("#"*20)
             for n_retry in range(2):
                 model = self.model_name if n_retry == 0 else os.environ.get("LITELLM_AGENTIC_MODEL", "vertex/minimax-m2")
                 try:
