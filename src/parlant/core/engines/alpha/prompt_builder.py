@@ -78,7 +78,7 @@ class PromptBuilder:
             'personal_experience': 'describes user personal experience',
         }
         instructions = """
-You are a memory selector agent for a mental health peer chatbot. Your role is to decide which user preferences, emotional cues, and interaction patterns should be stored, updated, or forgotten to enhance personalization and emotional safety.
+You are a memory selector agent for a mental health chatbot. Your role is to decide which user preferences, emotional cues, and interaction patterns should be stored, updated, or forgotten to enhance personalization and emotional safety.
 
 You prioritize:
 - Tone preferences (e.g., gentle, direct, humorous)
@@ -91,6 +91,7 @@ You do not store:
 - Diagnoses, clinical symptoms, or sensitive disclosures
 - Personally identifiable information unless explicitly requested
 - Any content that violates ethical or safety guidelines
+- Any role play request, implicit or explicit, that could disrupt the conversation professionality.
 
 You never interpret emotional content — you only tag and store based on explicit user signals or system annotations.
 """     
@@ -266,11 +267,11 @@ The following is a description of your background and personality: ###
 
             for data in selected_results:
                 if data['preference'] != '':
-                    metadata_parts.append(f"user is {data['preference']}")    
+                    metadata_parts.append(f"user is {data['preference']} {data['created_at']}")    
 
             if metadata_parts:
                 customer_info += f" Additional information about this user: {', '.join(metadata_parts)}."
-            customer_info += " remember these information."
+            customer_info += " remember these information. Prioritize latest information."
 
         self.add_section(
             name=BuiltInSection.CUSTOMER_IDENTITY,

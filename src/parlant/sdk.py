@@ -2469,6 +2469,7 @@ class Server:
         composition_mode: CompositionMode = CompositionMode.FLUID,
         max_engine_iterations: int | None = None,
         tags: Sequence[TagId] = [],
+        model_configs: Optional[dict[str, str]] = None,
     ) -> Agent:
         """Creates a new agent with the specified name, description, and composition mode."""
 
@@ -2480,6 +2481,12 @@ class Server:
             max_engine_iterations=max_engine_iterations or 3,
             composition_mode=composition_mode.value,
         )
+
+        # Set model configs if provided
+        if model_configs:
+            nlp_service = self._container[NLPService]
+            if hasattr(nlp_service, 'set_model_configs'):
+                nlp_service.set_model_configs(model_configs)
 
         return Agent(
             id=agent.id,

@@ -182,12 +182,14 @@ class OpenAISchematicGenerator(SchematicGenerator[T]):
         # print(hints)
         # print("response format", self.schema)
         # print("prompt", prompt)
+
+        print(self.model_name)
         if hints.get("strict", False):
             t_start = time.time()
             try:
                 response = await self._client.beta.chat.completions.parse(
                     messages=[{"role": "user", "content": prompt}],
-                    model=os.environ.get("LITELLM_AGENTIC_MODEL", "vertex/minimax-m2"),
+                    model=self.model_name,
                     response_format=self.schema,
                     **openai_api_arguments
                 )
@@ -333,9 +335,9 @@ class GPT_4o_Mini(OpenAISchematicGenerator[T]):
 class ChatModel(OpenAISchematicGenerator[T]):
     """Custom model using LiteLLM for generation."""
 
-    def __init__(self, logger: Logger) -> None:
+    def __init__(self, logger: Logger, model_name: str | None = None) -> None:
         super().__init__(
-            model_name=os.environ.get("LITELLM_CHAT_MODEL", "kimi-k2"),
+            model_name=model_name or os.environ.get("LITELLM_CHAT_MODEL", "kimi-k2"),
             logger=logger,
             tokenizer_model_name="gpt-4o-2024-11-20",
             api_key_env="LITELLM_API_KEY",
@@ -350,9 +352,9 @@ class ChatModel(OpenAISchematicGenerator[T]):
 class GuidelineModel(OpenAISchematicGenerator[T]):
     """Custom model for guideline-related tasks using LiteLLM."""
 
-    def __init__(self, logger: Logger) -> None:
+    def __init__(self, logger: Logger, model_name: str | None = None) -> None:
         super().__init__(
-            model_name=os.environ["LITELLM_GUIDELINE_MODEL"],
+            model_name=model_name or os.environ.get("LITELLM_GUIDELINE_MODEL", "vertex/minimax-m2"),
             logger=logger,
             tokenizer_model_name="gpt-4o-2024-11-20",
             api_key_env="LITELLM_API_KEY",
@@ -368,9 +370,9 @@ class GuidelineModel(OpenAISchematicGenerator[T]):
 class AgenticModel(OpenAISchematicGenerator[T]):
     """Custom model using LiteLLM for generation."""
 
-    def __init__(self, logger: Logger) -> None:
+    def __init__(self, logger: Logger, model_name: str | None = None) -> None:
         super().__init__(
-            model_name=os.environ.get("LITELLM_AGENTIC_MODEL", "vertex/minimax-m2"),
+            model_name=model_name or os.environ.get("LITELLM_AGENTIC_MODEL", "vertex/minimax-m2"),
             logger=logger,
             tokenizer_model_name="gpt-4o-2024-11-20",
             api_key_env="LITELLM_API_KEY",
@@ -550,23 +552,36 @@ Please set OPENAI_API_KEY in your environment before running Parlant.
     ) -> None:
         self._logger = logger
         self._logger.info("Initialized OpenAIService")
+        self.model_configs: dict[str, str] = {}
+
+    def set_model_configs(self, configs: dict[str, str]) -> None:
+        self.model_configs = configs
 
     @override
     async def get_schematic_generator(self, t: type[T]) -> OpenAISchematicGenerator[T]:
-        # Use ChatModel (LiteLLM) for all generation tasks
-        return {
-            SingleToolBatchSchema: AgenticModel[SingleToolBatchSchema],
-            JourneyNodeSelectionSchema: AgenticModel[JourneyNodeSelectionSchema],
-            CannedResponseDraftSchema: ChatModel[CannedResponseDraftSchema],
-            CannedResponseSelectionSchema: ChatModel[CannedResponseSelectionSchema],
-            # Guidlines
-            GenericObservationalGuidelineMatchesSchema: GuidelineModel[GenericObservationalGuidelineMatchesSchema],
-            GenericActionableGuidelineMatchesSchema: GuidelineModel[GenericActionableGuidelineMatchesSchema],
-            GenericPreviouslyAppliedActionableGuidelineMatchesSchema: GuidelineModel[GenericPreviouslyAppliedActionableGuidelineMatchesSchema],
-            GenericPreviouslyAppliedActionableCustomerDependentGuidelineMatchesSchema: GuidelineModel[GenericPreviouslyAppliedActionableCustomerDependentGuidelineMatchesSchema],
-            GenericResponseAnalysisSchema: GuidelineModel[GenericResponseAnalysisSchema],
-            DisambiguationGuidelineMatchesSchema: GuidelineModel[DisambiguationGuidelineMatchesSchema],
-        }.get(t, ChatModel[t])(self._logger)  # type: ignore
+        key_map = {
+            SingleToolBatchSchema: "agentic",
+            JourneyNodeSelectionSchema: "agentic",
+            CannedResponseDraftSchema: "chat",
+            CannedResponseSelectionSchema: "chat",
+            # Guidelines
+            GenericObservationalGuidelineMatchesSchema: "guideline",
+            GenericActionableGuidelineMatchesSchema: "guideline",
+            GenericPreviouslyAppliedActionableGuidelineMatchesSchema: "guideline",
+            GenericPreviouslyAppliedActionableCustomerDependentGuidelineMatchesSchema: "guideline",
+            GenericResponseAnalysisSchema: "guideline",
+            DisambiguationGuidelineMatchesSchema: "guideline",
+        }
+        
+        key = key_map.get(t, "chat")
+        model_name = self.model_configs.get(key)
+        
+        if key == "agentic":
+            return AgenticModel[t](self._logger, model_name)
+        elif key == "guideline":
+            return GuidelineModel[t](self._logger, model_name)
+        else:
+            return ChatModel[t](self._logger, model_name)
 
     @override
     async def get_embedder(self) -> Embedder:
